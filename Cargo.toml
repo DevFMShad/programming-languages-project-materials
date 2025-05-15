@@ -5,3 +5,7 @@ edition = "2021"
 authors = ["mahmud.shad@sa.stud.vu.lt"]
 
 [dependencies]
+# No external dependencies needed
+
+[dev-dependencies]
+# No additional dev-dependencies needed for tests

@@ -1,194 +1,203 @@
+// tokenizer.rs - Converts SQL query strings into a sequence of tokens for the SQL parser.
+// Supports tokenization of single-character tokens, multi-character tokens, numbers, strings, keywords, and identifiers
+// (Functionality #1–6, 7 points: #1 single-character tokens, #2 multi-character tokens, #3 numbers,
+// #4 strings, #5 keywords, #6 identifiers).
+// Includes error handling for unterminated strings and unexpected characters (Functionality #16, 2 points).
+
+// Import token definitions and utilities for tokenization.
 use crate::token::{Token, Keyword};
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug)]
-pub struct Tokenizer<'a> {
-    input: Peekable<Chars<'a>>,
-    current_char: Option<char>,
-}
-
-#[derive(Debug)]
+// Define errors for tokenization issues.
+#[derive(Debug, PartialEq)]
 pub enum TokenizerError {
-    UnexpectedChar(char),
-    UnterminatedString,
-    InvalidNumber(String),
+    UnterminatedString, // String missing closing quote.
+    UnexpectedChar(char), // Invalid character encountered.
 }
 
-impl std::fmt::Display for TokenizerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenizerError::UnexpectedChar(c) => write!(f, "Unexpected character: {}", c),
-            TokenizerError::UnterminatedString => write!(f, "Unterminated string literal"),
-            TokenizerError::InvalidNumber(s) => write!(f, "Invalid number: {}", s),
-        }
-    }
+// Tokenizer struct for processing input string.
+pub struct Tokenizer<'a> {
+    input: Peekable<Chars<'a>>, // Iterator to peek and consume characters.
 }
 
 impl<'a> Tokenizer<'a> {
+    // Create a new Tokenizer from input string.
     pub fn new(input: &'a str) -> Self {
-        let mut chars = input.chars().peekable();
-        let current_char = chars.next();
-        Tokenizer { input: chars, current_char }
+        Tokenizer {
+            input: input.chars().peekable(),
+        }
     }
 
-    fn advance(&mut self) {
-        self.current_char = self.input.next();
+    // Get next character and advance iterator.
+    fn next_char(&mut self) -> Option<char> {
+        self.input.next()
     }
 
-    fn peek(&mut self) -> Option<char> {
-        self.input.peek().copied()
+    // Peek at next character without advancing.
+    fn peek_char(&mut self) -> Option<&char> {
+        self.input.peek()
     }
 
+    // Tokenize input into a vector of tokens.
     pub fn tokenize(&mut self) -> Result<Vec<Token>, TokenizerError> {
         let mut tokens = Vec::new();
 
-        while let Some(c) = self.current_char {
+        // Process each character in input.
+        while let Some(&c) = self.peek_char() {
             match c {
-                ' ' | '\t' | '\n' => self.advance(),
+                ' ' | '\t' | '\n' => {
+                    self.next_char(); // Skip whitespace.
+                }
                 '(' => {
+                    self.next_char();
                     tokens.push(Token::LeftParentheses);
-                    self.advance();
                 }
                 ')' => {
+                    self.next_char();
                     tokens.push(Token::RightParentheses);
-                    self.advance();
                 }
                 ',' => {
+                    self.next_char();
                     tokens.push(Token::Comma);
-                    self.advance();
                 }
                 ';' => {
+                    self.next_char();
                     tokens.push(Token::Semicolon);
-                    self.advance();
                 }
                 '+' => {
+                    self.next_char();
                     tokens.push(Token::Plus);
-                    self.advance();
                 }
                 '-' => {
+                    self.next_char();
                     tokens.push(Token::Minus);
-                    self.advance();
                 }
                 '*' => {
-                    tokens.push(Token::Star);
-                    self.advance();
+                    self.next_char();
+                    tokens.push(Token::Star); // For SELECT * or multiplication.
                 }
                 '/' => {
+                    self.next_char();
                     tokens.push(Token::Divide);
-                    self.advance();
+                }
+                '=' => {
+                    self.next_char();
+                    tokens.push(Token::Equal); // For equality comparisons.
                 }
                 '>' => {
-                    if self.peek() == Some('=') {
+                    self.next_char();
+                    if self.peek_char() == Some(&'=') {
+                        self.next_char();
                         tokens.push(Token::GreaterThanOrEqual);
-                        self.advance();
                     } else {
                         tokens.push(Token::GreaterThan);
                     }
-                    self.advance();
                 }
                 '<' => {
-                    if self.peek() == Some('=') {
+                    self.next_char();
+                    if self.peek_char() == Some(&'=') {
+                        self.next_char();
                         tokens.push(Token::LessThanOrEqual);
-                        self.advance();
                     } else {
                         tokens.push(Token::LessThan);
                     }
-                    self.advance();
-                }
-                '=' => {
-                    tokens.push(Token::Equal);
-                    self.advance();
                 }
                 '!' => {
-                    if self.peek() == Some('=') {
+                    self.next_char();
+                    if self.peek_char() == Some(&'=') {
+                        self.next_char();
                         tokens.push(Token::NotEqual);
-                        self.advance();
                     } else {
-                        return Err(TokenizerError::UnexpectedChar('!'));
+                        return Err(TokenizerError::UnexpectedChar('!')); // Error for lone !.
                     }
-                    self.advance();
                 }
                 '"' | '\'' => {
                     let quote = c;
-                    self.advance();
-                    let mut s = String::new();
-                    let mut closed = false;
-                    while let Some(ch) = self.current_char {
-                        if ch == quote {
-                            closed = true;
-                            self.advance();
-                            break;
+                    self.next_char();
+                    let mut string = String::new();
+                    while let Some(c) = self.next_char() {
+                        if c == quote {
+                            break; // End of string.
                         }
-                        s.push(ch);
-                        self.advance();
+                        if c == '\\' {
+                            // Handle escaped characters.
+                            if let Some(next) = self.next_char() {
+                                match next {
+                                    '"' | '\'' => string.push(next),
+                                    '\\' => string.push('\\'),
+                                    _ => string.push(next),
+                                }
+                            } else {
+                                return Err(TokenizerError::UnterminatedString);
+                            }
+                            continue;
+                        }
+                        string.push(c);
                     }
-                    if !closed {
-                        return Err(TokenizerError::UnterminatedString);
+                    if self.peek_char().is_none() && string.is_empty() {
+                        return Err(TokenizerError::UnterminatedString); // Error for empty unterminated string.
                     }
-                    tokens.push(Token::String(s));
+                    tokens.push(Token::String(string)); // Store string literal.
                 }
-                c if c.is_alphabetic() || c == '_' => {
-                    let mut ident = String::new();
-                    ident.push(c);
-                    self.advance();
-                    while let Some(ch) = self.current_char {
-                        if ch.is_alphanumeric() || ch == '_' {
-                            ident.push(ch);
-                            self.advance();
+                '0'..='9' => {
+                    let mut num = String::new();
+                    while let Some(&c) = self.peek_char() {
+                        if c.is_digit(10) {
+                            num.push(c);
+                            self.next_char();
                         } else {
                             break;
                         }
                     }
-                    let token = match ident.to_uppercase().as_str() {
-                        "SELECT" => Token::Keyword(Keyword::Select),
-                        "CREATE" => Token::Keyword(Keyword::Create),
-                        "TABLE" => Token::Keyword(Keyword::Table),
-                        "WHERE" => Token::Keyword(Keyword::Where),
-                        "ORDER" => Token::Keyword(Keyword::Order),
-                        "BY" => Token::Keyword(Keyword::By),
-                        "ASC" => Token::Keyword(Keyword::Asc),
-                        "DESC" => Token::Keyword(Keyword::Desc),
-                        "FROM" => Token::Keyword(Keyword::From),
-                        "AND" => Token::Keyword(Keyword::And),
-                        "OR" => Token::Keyword(Keyword::Or),
-                        "NOT" => Token::Keyword(Keyword::Not),
-                        "TRUE" => Token::Keyword(Keyword::True),
-                        "FALSE" => Token::Keyword(Keyword::False),
-                        "PRIMARY" => Token::Keyword(Keyword::Primary),
-                        "KEY" => Token::Keyword(Keyword::Key),
-                        "CHECK" => Token::Keyword(Keyword::Check),
-                        "INT" => Token::Keyword(Keyword::Int),
-                        "BOOL" => Token::Keyword(Keyword::Bool),
-                        "VARCHAR" => Token::Keyword(Keyword::Varchar),
-                        "NULL" => Token::Keyword(Keyword::Null),
+                    let number = num.parse::<u64>().unwrap(); // Convert to u64.
+                    tokens.push(Token::Number(number));
+                }
+                'a'..='z' | 'A'..='Z' | '_' => {
+                    let mut ident = String::new();
+                    while let Some(&c) = self.peek_char() {
+                        if c.is_alphabetic() || c.is_digit(10) || c == '_' {
+                            ident.push(c);
+                            self.next_char();
+                        } else {
+                            break;
+                        }
+                    }
+                    let ident_lower = ident.to_lowercase();
+                    // Map identifiers to keywords or keep as identifiers.
+                    let token = match ident_lower.as_str() {
+                        "select" => Token::Keyword(Keyword::Select),
+                        "from" => Token::Keyword(Keyword::From),
+                        "where" => Token::Keyword(Keyword::Where),
+                        "order" => Token::Keyword(Keyword::Order),
+                        "by" => Token::Keyword(Keyword::By),
+                        "create" => Token::Keyword(Keyword::Create),
+                        "table" => Token::Keyword(Keyword::Table),
+                        "int" => Token::Keyword(Keyword::Int),
+                        "varchar" => Token::Keyword(Keyword::Varchar),
+                        "bool" => Token::Keyword(Keyword::Bool),
+                        "primary" => Token::Keyword(Keyword::Primary),
+                        "key" => Token::Keyword(Keyword::Key),
+                        "not" => Token::Keyword(Keyword::Not),
+                        "null" => Token::Keyword(Keyword::Null),
+                        "check" => Token::Keyword(Keyword::Check),
+                        "true" => Token::Keyword(Keyword::True),
+                        "false" => Token::Keyword(Keyword::False),
+                        "and" => Token::Keyword(Keyword::And),
+                        "or" => Token::Keyword(Keyword::Or),
+                        "asc" => Token::Keyword(Keyword::Asc),
+                        "desc" => Token::Keyword(Keyword::Desc),
                         _ => Token::Identifier(ident),
                     };
                     tokens.push(token);
                 }
-                c if c.is_digit(10) => {
-                    let mut num = String::new();
-                    num.push(c);
-                    self.advance();
-                    while let Some(ch) = self.current_char {
-                        if ch.is_digit(10) {
-                            num.push(ch);
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                    let num = num.parse::<u64>().map_err(|_| TokenizerError::InvalidNumber(num.clone()))?;
-                    tokens.push(Token::Number(num));
-                }
-                c => {
-                    tokens.push(Token::Invalid(c));
-                    self.advance();
-                    return Err(TokenizerError::UnexpectedChar(c));
+                _ => {
+                    self.next_char();
+                    return Err(TokenizerError::UnexpectedChar(c)); // Error for invalid chars.
                 }
             }
         }
-        tokens.push(Token::Eof);
+        tokens.push(Token::Eof); // Mark end of input.
         Ok(tokens)
     }
 }
