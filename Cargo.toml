@@ -1,7 +1,7 @@
 [package]
-name = "programming_languages_project_name_surname"
+name = "programming_languages_project_Fuad_Mahmud_Shad"
 version = "0.0.0"
 edition = "2021"
-authors = ["your_academic_email"]
+authors = ["mahmud.shad@sa.stud.vu.lt"]
 
 [dependencies]
